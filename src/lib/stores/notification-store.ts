@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 // ============================================
 // TYPES
@@ -28,6 +29,10 @@ export interface NotificationItem {
 interface NotificationState {
   notifications: NotificationItem[];
   unreadCount: number;
+  // Which role the mock notifications were last seeded for. Used to avoid
+  // re-seeding (and wiping read/deleted state) every time initNotifications
+  // runs on remount.
+  initializedRole: "user" | "seller" | "admin" | null;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   addNotification: (item: Omit<NotificationItem, "id" | "created_at" | "is_read">) => void;
@@ -120,48 +125,58 @@ const MOCK_USER_NOTIFICATIONS: NotificationItem[] = [
 // ZUSTAND STORE
 // ============================================
 
-export const useNotificationStore = create<NotificationState>((set) => ({
-  notifications: [],
-  unreadCount: 0,
-
-  markAsRead: (id: string) =>
-    set((state) => {
-      const updated = state.notifications.map((n) =>
-        n.id === id ? { ...n, is_read: true } : n
-      );
-      return {
-        notifications: updated,
-        unreadCount: updated.filter((n) => !n.is_read).length,
-      };
-    }),
-
-  markAllAsRead: () =>
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, is_read: true })),
+export const useNotificationStore = create<NotificationState>()(
+  persist(
+    (set) => ({
+      notifications: [],
       unreadCount: 0,
-    })),
+      initializedRole: null,
 
-  addNotification: (item) =>
-    set((state) => {
-      const newNotif: NotificationItem = {
-        ...item,
-        id: `n-${Date.now()}`,
-        is_read: false,
-        created_at: new Date().toISOString(),
-      };
-      const updated = [newNotif, ...state.notifications];
-      return {
-        notifications: updated,
-        unreadCount: updated.filter((n) => !n.is_read).length,
-      };
+      markAsRead: (id: string) =>
+        set((state) => {
+          const updated = state.notifications.map((n) =>
+            n.id === id ? { ...n, is_read: true } : n
+          );
+          return {
+            notifications: updated,
+            unreadCount: updated.filter((n) => !n.is_read).length,
+          };
+        }),
+
+      markAllAsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, is_read: true })),
+          unreadCount: 0,
+        })),
+
+      addNotification: (item) =>
+        set((state) => {
+          const newNotif: NotificationItem = {
+            ...item,
+            id: `n-${Date.now()}`,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          };
+          const updated = [newNotif, ...state.notifications];
+          return {
+            notifications: updated,
+            unreadCount: updated.filter((n) => !n.is_read).length,
+          };
+        }),
+
+      clearAll: () => set({ notifications: [], unreadCount: 0 }),
     }),
+    {
+      name: "nyiur-notifications",
+      version: 1,
+    }
+  )
+);
 
-  clearAll: () => set({ notifications: [], unreadCount: 0 }),
-}));
-
-// Helper to initialize notifications based on role
 export function initNotifications(role: "user" | "seller" | "admin") {
   const store = useNotificationStore.getState();
+  if (store.initializedRole === role) return;
+
   const notifs =
     role === "seller" || role === "admin"
       ? MOCK_SELLER_NOTIFICATIONS
@@ -169,5 +184,6 @@ export function initNotifications(role: "user" | "seller" | "admin") {
   useNotificationStore.setState({
     notifications: notifs,
     unreadCount: notifs.filter((n) => !n.is_read).length,
+    initializedRole: role,
   });
 }
