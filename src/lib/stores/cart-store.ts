@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Product } from "@/types";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 export interface CartItem {
   product: Product;
@@ -15,7 +16,7 @@ interface CartStore {
   voucher: string | null;
   voucherDiscount: number;
 
-  addItem: (product: Product, quantity?: number) => void;
+  addItem: (product: Product, quantity?: number) => boolean;
   removeItem: (productId: string) => void;
   removeItems: (productIds: string[]) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -44,6 +45,13 @@ export const useCartStore = create<CartStore>()(
       voucherDiscount: 0,
 
       addItem: (product, quantity = 1) => {
+        // /keranjang and /checkout are already login-protected in middleware.ts,
+        // but until now nothing stopped a guest from silently adding items to
+        // the cart from a product card or the product detail page before ever
+        // hitting that guard. Block it at the source instead.
+        const user = useAuthStore.getState().user;
+        if (!user) return false;
+
         set((state) => {
           const existing = state.items.find((i) => i.product.id === product.id);
           if (existing) {
@@ -59,6 +67,7 @@ export const useCartStore = create<CartStore>()(
             items: [...state.items, { product, quantity: Math.min(quantity, product.stock) }],
           };
         });
+        return true;
       },
 
       removeItem: (productId) => {
