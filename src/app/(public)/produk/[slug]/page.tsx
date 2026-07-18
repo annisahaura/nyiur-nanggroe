@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { notFound } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { use } from "react";
 
 export default function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const product = getProductBySlug(resolvedParams.slug);
   if (!product) notFound();
@@ -50,13 +52,23 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const images = product.images ?? [];
 
   const handleAddToCart = () => {
-    addItem(product, quantity);
+    const added = addItem(product, quantity);
+    if (!added) {
+      const currentUrl = window.location.pathname + window.location.search;
+      router.push(`/masuk?alasan=keranjang&redirect=${encodeURIComponent(currentUrl)}`);
+      return;
+    }
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
   };
 
   const handleBuyNow = () => {
-    addItem(product, quantity);
+    const added = addItem(product, quantity);
+    if (!added) {
+      const currentUrl = window.location.pathname + window.location.search;
+      router.push(`/masuk?alasan=checkout&redirect=${encodeURIComponent(currentUrl)}`);
+      return;
+    }
     window.location.href = "/checkout";
   };
 
