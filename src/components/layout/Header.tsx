@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/types";
 import { useCurrentUser, useAuthStore } from "@/lib/stores/auth-store";
+import { useCartStore } from "@/lib/stores/cart-store";
 import { useNotificationStore, initNotifications } from "@/lib/stores/notification-store";
 import { NotificationPanel } from "@/components/ui/NotificationPanel";
 
@@ -87,6 +88,7 @@ export function Header({ className }: HeaderProps) {
   const heroTransparent = isHeroPage && !isScrolled;
   const unreadNotifCount = useNotificationStore((s) => s.unreadCount);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const cartItemCount = useCartStore((s) => s.items.length);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -352,6 +354,9 @@ export function Header({ className }: HeaderProps) {
                     aria-label="Keranjang Belanja"
                   >
                     <ShoppingCart className="w-5 h-5" />
+                    {cartItemCount > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    )}
                   </Link>
 
                   {/* Notifications */}
