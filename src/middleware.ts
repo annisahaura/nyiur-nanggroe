@@ -1,6 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// NextResponse.redirect(...) creates a brand new response object. If
+// supabase.auth.getUser() below just refreshed the session (rotating the
+// access/refresh token cookies onto `supabaseResponse`), a plain
+// NextResponse.redirect() would silently drop those refreshed cookies —
+// the browser keeps the old, now-invalidated refresh token, and the next
+// request from that user genuinely fails auth even though they never
+// logged out. Every redirect below must carry the refreshed cookies too.
+function redirectWithSession(url: URL, supabaseResponse: NextResponse) {
+  const response = NextResponse.redirect(url);
+  supabaseResponse.cookies.getAll().forEach((cookie) => {
+    response.cookies.set(cookie);
+  });
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -91,32 +106,49 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = "/masuk";
     redirectUrl.searchParams.set("redirect", request.nextUrl.pathname);
     redirectUrl.searchParams.set("alasan", getAlasanAuth(request.nextUrl.pathname));
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithSession(redirectUrl, supabaseResponse);
   }
 
   // ============================================================
-  // GUARD: Rute admin — cek role dari app_metadata (disimpan oleh Supabase Auth)
+  // Peran (role) pengguna disimpan di tabel `profiles`, BUKAN di
+  // `app_metadata` milik Supabase Auth — tidak ada satu pun tempat di
+  // codebase ini yang menulis ke app_metadata. Ambil sekali di sini,
+  // hanya kalau memang perlu (rute admin/penjual), dan pakai itu untuk
+  // guard di bawah supaya konsisten dengan cara getAuthUser() bekerja.
+  let dbRole: string | null = null;
+  const getDbRole = async () => {
+    if (dbRole !== null || !user) return dbRole;
+    const { data } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    dbRole = data?.role ?? "user";
+    return dbRole;
+  };
+
+  // ============================================================
+  // GUARD: Rute admin — cek role dari tabel profiles
   // ============================================================
   if (user && adalahRuteAdmin) {
-    const roleAdmin = user.app_metadata?.role === "admin";
+    const roleAdmin = (await getDbRole()) === "admin";
     if (!roleAdmin) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/";
-      return NextResponse.redirect(redirectUrl);
+      return redirectWithSession(redirectUrl, supabaseResponse);
     }
   }
 
   // ============================================================
-  // GUARD: Rute penjual — cek role dari app_metadata
+  // GUARD: Rute penjual — cek role dari tabel profiles
   // ============================================================
   if (user && adalahRutePenjual) {
-    const rolePenjual =
-      user.app_metadata?.role === "seller" ||
-      user.app_metadata?.role === "admin";
+    const role = await getDbRole();
+    const rolePenjual = role === "seller" || role === "admin";
     if (!rolePenjual) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/daftar-mitra";
-      return NextResponse.redirect(redirectUrl);
+      return redirectWithSession(redirectUrl, supabaseResponse);
     }
   }
 
@@ -130,7 +162,7 @@ export async function middleware(request: NextRequest) {
   ) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithSession(redirectUrl, supabaseResponse);
   }
 
   // Set security headers
