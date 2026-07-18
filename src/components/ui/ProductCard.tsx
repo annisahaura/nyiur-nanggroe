@@ -31,7 +31,12 @@ export function ProductCard({ product, className, priority = false }: ProductCar
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
-    addItem(product, 1);
+    const added = addItem(product, 1);
+    if (!added) {
+      const currentUrl = window.location.pathname + window.location.search;
+      router.push(`/masuk?alasan=keranjang&redirect=${encodeURIComponent(currentUrl)}`);
+      return;
+    }
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 1500);
   };
